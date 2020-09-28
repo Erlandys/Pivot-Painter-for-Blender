@@ -96,7 +96,7 @@ version 0.7
 
 ## License
 
-This project is Licensed under the GPL v3.0, see the [LICENSE.txt](LICENSE.txt) file for details.
+This project is Licensed under the GPL v3.0, see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgment
 
