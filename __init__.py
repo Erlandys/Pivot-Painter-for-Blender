@@ -1,6 +1,7 @@
 import bpy
 
 from . import PivotPainterTool
+from bpy.props import PointerProperty
 
 bl_info = {
     "name": "Pivot Painter",
@@ -15,14 +16,14 @@ bl_info = {
 
 def register():
     from bpy.utils import register_class
-    for cls in classes:
+    for cls in PivotPainterTool.classes:
         register_class(cls)
     bpy.types.Scene.pivot_painter = PointerProperty(
-        type=UE4_PivotPainterProperties)
+        type=PivotPainterTool.UE4_PivotPainterProperties)
 
 
 def unregister():
     from bpy.utils import unregister_class
-    for cls in reversed(classes):
+    for cls in reversed(PivotPainterTool.classes):
         unregister_class(cls)
     del bpy.types.Scene.pivot_painter

@@ -1019,13 +1019,9 @@ class VIEW3D_PT_pivot_painter_Object(Panel, PPB_PT_panel):
 classes = (
     VIEW3D_PT_pivot_painter_Object,
     #PPB_PT_panel,
-       PPB_OT_CreateTextures,
-       UE4_PivotPainterProperties,
-       PPB_OT_ShowHideExtraOptions,
-       PPB_OT_ShowHideExperimentalOptions,
+    PPB_OT_CreateTextures,
+    UE4_PivotPainterProperties,
+    PPB_OT_ShowHideExtraOptions,
+    PPB_OT_ShowHideExperimentalOptions,
     PPB_OT_CreateSelectOrder,
 )
-
-
-if __name__ == "__main__":  # For manual execution(testing)
-    register()
