@@ -151,6 +151,8 @@ def findrgbfunction(texturergb, hdr):
     elif texturergb == 'OriginExtents':
         rgbfunction = ExtentsArray
         hdr = True
+    elif texturergb == 'Hierarchy_Random_Diameter':
+        rgbfunction = hierarchy_random_diameter
     else:
         rgbfunction = rgbnonefuction
     return rgbfunction, hdr
@@ -253,7 +255,7 @@ def createtexture(size, texturenubmer):
     image = bpy.data.images.new(
         name=texturename, width=size[0], height=size[1], float_buffer=hdr)
 
-    pixels = setpixels(rgbfunction, alphafunction, texturealpha,
+    pixels = setpixels(rgbfunction, alphafunction, texturergb, texturealpha,
                        texturenubmer, pp, size, pixels, hdr)  # Calculate the pixels values
     image.pixels = pixels  # assign pixels
 
@@ -272,7 +274,7 @@ def createtexture(size, texturenubmer):
 
 
 # Calculate the pixels values
-def setpixels(rgbfunction, alphafunction, texturealpha, texturenubmer, pp, size, pixels, hdr):
+def setpixels(rgbfunction, alphafunction, texturergb, texturealpha, texturenubmer, pp, size, pixels, hdr):
     counter = 0
     tt = time.time()
     for obj in bpy.context.selected_objects:  # The
@@ -297,8 +299,13 @@ def setpixels(rgbfunction, alphafunction, texturealpha, texturenubmer, pp, size,
         # if have found empty pixels, but not anymore empty, stop.
         elif foundthem == True:
             break
+
+    # Functions for alpha and rgb write only object level in main loop.
+    # We need this later step to find max level and normalize.
     if texturealpha == 'Hierarchy':  # second part of the function to create the hierarchy
-        pixels = hierarchy(pp, obj, counter, size, pixels, hdr)
+        pixels = hierarchy(pp, obj, counter, size, pixels, hdr, channel=3)
+    if texturergb == "Hierarchy_Random_Diameter":
+        pixels = hierarchy(pp, obj, counter, size, pixels, hdr, channel=0)
     complete("Calculating pixel %i of %i for texture %i, time %f" % (len(
         bpy.context.selected_objects), len(bpy.context.selected_objects), texturenubmer + 1, time.time()-tt))
     return pixels
@@ -312,19 +319,17 @@ def rgbnonefuction(pp, obj, counter, size, pixels, hdr):
 
 # 0 as alpha, to avoid Null problems (used at the end to fill empty pixels)
 def alphanonefuction(pp, obj, counter, size, pixels, hdr):
-    a = 0
-    return a
-
+    return 1
 
 # Hierarchy, current level of the object / highest possible level
-def hierarchy(pp, obj, counter, size, pixels, hdr):
+def hierarchy(pp, obj, counter, size, pixels, hdr, channel=3):
     maxlevel = 1
-    for i in range(3, len(pixels), 4):
+    for i in range(channel, len(pixels), 4):
         currentlevel = pixels[i]
         if currentlevel > maxlevel:
             maxlevel = currentlevel
     print('Max level is ', maxlevel)
-    for i in range(3, len(pixels), 4):
+    for i in range(channel, len(pixels), 4):
         currentlevel = pixels[i]
         normalizedlevel = currentlevel / maxlevel
         pixels[i] = normalizedlevel
@@ -577,6 +582,9 @@ def zextent(pp, obj, counter, size, pixels, hdr):
     return a
 
 
+def hierarchy_random_diameter(*args):
+    return [level(*args), randomfloat(*args), diagonalscaled(*args)]
+
 # create property group for user options
 class UE4_PivotPainterProperties(PropertyGroup):
 
@@ -619,6 +627,7 @@ class UE4_PivotPainterProperties(PropertyGroup):
         ("Xaxis", "X Axis", 'X Axis from rotation.\n\nIf save texture manually, save as PNG, RGBA, Color Depth:8.'),
         ("Yaxis", "Y Axis", 'Y Axis from rotation.\n\nIf save texture manually, save as PNG, RGBA, Color Depth:8'),
         ("Zaxis", "Z Axis", 'Z Axis from rotation.\n\nIf save texture manually, save as PNG, RGBA, Color Depth:8'),
+        ("Hierarchy_Random_Diameter", "Hierarchy 0-1, Random 0-1, BBox Diameter", 'Object number / Total nubmer of objects in Red channel\n\nRandom number per object in Green channel\n\nThe length of the diagonal of the bound box WITH scale taken into calculation\nValues between 8-2048 in increments of 8 in Blue channel\n\nSave as PNG, RGBA, Color Depth:8'),
         ("None", "None", 'Will use as rgb values 0')
     ]
     # Any other way to create multiple of them in loop? And display on the UI.
