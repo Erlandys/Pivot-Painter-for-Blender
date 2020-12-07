@@ -41,6 +41,8 @@ Because the tool requires separate objects to work, in complex meshes the number
 It is not possible to recreate exactly the same, some of the examples from pivot painter 1. Pivot painter tool 1 provide custom alpha data, which this addon does not create. 
  
 ## Changelog
+version 1.1.3
+- Add RGB export function with a packed hierarchy, random and diameter value
 
 version 1.1.2
 - fix Ydepth and Zheight functions.
