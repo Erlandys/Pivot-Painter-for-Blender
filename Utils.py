@@ -113,7 +113,6 @@ def register_classes_from_module(module_name: str, class_type):
             continue
         if not issubclass(obj, class_type):
             continue
-        print(name)
         bpy.utils.register_class(obj)
 
 
@@ -141,7 +140,6 @@ class ProgressBar:
     __parent: 'ProgressBar' = None
     __parent_progress: float
     __window_manager: bpy.types.WindowManager | None = None
-    __progress_report: wm_utils.progress_report.ProgressReport | None = None
 
     def __init__(self, description: str, tasks: int, parent: 'ProgressBar' = None, width: int = 40, parent_progress: float = 0, show_cursor_progress: bool = True):
         self.__description = description

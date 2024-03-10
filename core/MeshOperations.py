@@ -1,6 +1,7 @@
 import time
 
 import bpy
+import mathutils.kdtree
 
 
 def split_mesh(selection: list[bpy.types.Object]):
@@ -131,7 +132,6 @@ def generate_hierarchy_from_base_meshes(base_mesh_objects: set[bpy.types.Object]
         objects_to_iterate = new_objects_to_iterate
         idx += 1
         progress_bar.finish()
-        bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
 
 
 def create_overlaps_dict(objects: list[bpy.types.Object]) -> dict[bpy.types.Object, set[bpy.types.Object]]:
@@ -181,6 +181,11 @@ def create_overlaps_dict(objects: list[bpy.types.Object]) -> dict[bpy.types.Obje
 
 
 def copy_uvs(operator: bpy.types.Operator, context: bpy.types.Context, selection: list[bpy.types.Object]):
+    from ..core.CreateTextures import find_texture_dimensions, create_uv_map
+
+    size = find_texture_dimensions(selection)
+    create_uv_map(context, selection, size)
+
     from ..Properties import get_mesh_operations_settings, get_texture_settings
     from ..Utils import ProgressBar
 
@@ -202,86 +207,70 @@ def copy_uvs(operator: bpy.types.Operator, context: bpy.types.Context, selection
     target_obj.select_set(True)
 
     bpy.ops.object.select_all(action='DESELECT')
+    num_loops = 0
     for obj in selection:
         obj.select_set(True)
+        num_loops += len(obj.data.loops)
 
     if uv_map not in target_obj_data.uv_layers:
         target_obj_data.uv_layers.new(name=uv_map, do_init=False)
 
-    import typing
+    progress = ProgressBar('Copying UVs {1} of {0}', num_loops)
 
-    class Vector:
-        x: float
-        y: float
-        z: float
-
-        def __init__(self, vertex: typing.Tuple):
-            self.x = vertex[0]
-            self.y = vertex[1]
-            self.z = vertex[2]
-
-        def nearly_equal(self, other, tolerance: float = 1e-6) -> bool:
-            return other and abs(self.x - other.x) <= tolerance and abs(self.y - other.y) <= tolerance and abs(self.z - other.z) <= tolerance
-
-        def __eq__(self, other):
-            return other and self.x == other.x and self.y == other.y and self.z == other.z
-
-        def __hash__(self):
-            return hash((self.x, self.y, self.z))
-
-        def __str__(self):
-            return f"Vector({self.x}, {self.y}, {self.z})"
-
-    mapped_uvs: dict[Vector, tuple[float, float]] = {}
-
-    progress = ProgressBar('Copying UVs {1} of {0}', len(selection) * 100 + len(target_obj_data.loops))
-
-    for obj in selection:
-        obj_data: bpy.types.Mesh = obj.data
-
-        obj_data.uv_layers[texture_properties.uv_map_name].active = True
-        for loop in obj_data.loops:
-            vertex = obj.matrix_world @ obj_data.vertices[loop.vertex_index].co
-            uv = obj_data.uv_layers[texture_properties.uv_map_name].data[loop.index].uv
-            mapped_uvs[Vector(vertex.to_tuple(properties.copy_uvs_uv_precision_lookup))] = (uv[0], uv[1])
-
-        obj_data.uv_layers[texture_properties.uv_map_name].active = False
-
-        progress += 100
+    tolerance = pow(10, -(properties.copy_uvs_uv_precision_lookup))
 
     target_obj_data.uv_layers[texture_properties.uv_map_name].active = True
 
-    tolerance = pow(10, -(properties.copy_uvs_uv_precision_lookup - 1))
+    kd = mathutils.kdtree.KDTree(len(target_obj_data.vertices))
+    for idx, vertex in enumerate(target_obj_data.vertices):
+        kd.insert(target_obj.matrix_world @ vertex.co, idx)
+    kd.balance()
 
-    success = True
-    idx = 0
+    vertex_index_to_loops: dict[int, list[int]] = {}
     for loop in target_obj_data.loops:
-        vertex = target_obj.matrix_world @ target_obj_data.vertices[loop.vertex_index].co
-        vertex = Vector(vertex.to_tuple(properties.copy_uvs_uv_precision_lookup))
-        if vertex in mapped_uvs:
-            target_obj_data.uv_layers[texture_properties.uv_map_name].data[loop.index].uv = mapped_uvs[vertex]
-            idx += 1
-            if idx % 100 == 99:
-                progress += 100
-            continue
-        found = False
-        for v, uv in mapped_uvs.items():
-            if v.nearly_equal(vertex, tolerance):
-                target_obj_data.uv_layers[texture_properties.uv_map_name].data[loop.index].uv = mapped_uvs[v]
-                found = True
-                break
+        if loop.vertex_index in vertex_index_to_loops:
+            vertex_index_to_loops[loop.vertex_index].append(loop.index)
+        else:
+            vertex_index_to_loops[loop.vertex_index] = [loop.index]
 
-        idx += 1
-        if idx % 100 == 99:
-            progress += 100
+    num_found_none = 0
+    num_missing = 0
+    for obj in selection:
+        obj_data: bpy.types.Mesh = obj.data
 
-        if not found:
-            success = False
-            break
+        for loop in obj_data.loops:
+            vertex = obj.matrix_world @ obj_data.vertices[loop.vertex_index].co
+            uv = obj_data.uv_layers[texture_properties.uv_map_name].data[loop.index].uv
+            found_vertices = kd.find_range(vertex, tolerance)
+            if len(found_vertices) == 0:
+                num_found_none += 1
+            elif len(found_vertices) > 1:
+                for found_vertex in found_vertices:
+                    vertex_index = found_vertex[1]
+                    if vertex_index in vertex_index_to_loops:
+                        for loop_index in vertex_index_to_loops[vertex_index]:
+                            target_obj_data.uv_layers[texture_properties.uv_map_name].data[loop_index].uv = uv
+                    else:
+                        num_missing += 1
+            else:
+                vertex_index = found_vertices[0][1]
+                if vertex_index in vertex_index_to_loops:
+                    for loop_index in vertex_index_to_loops[vertex_index]:
+                        target_obj_data.uv_layers[texture_properties.uv_map_name].data[loop_index].uv = uv
+                else:
+                    num_missing += 1
 
-    progress.finish(success)
+        obj_data.uv_layers[texture_properties.uv_map_name].active = False
 
+        progress += len(obj_data.loops)
+
+    target_obj_data.uv_layers[texture_properties.uv_map_name].active = True
+
+    progress.finish(True)
+
+    success: bool = num_missing + num_found_none == 0
     if not success:
-        operator.report({'WARNING'}, 'Failed to match vertices for UVs copying. Reduce UV Lookup Precision.')
+        print('Missing ' + str(num_found_none + num_missing) + ' of ' + str(len(target_obj_data.loops)) + '.')
+        operator.report({'WARNING'}, 'Failed to fully match vertices. Missing ' + str(num_found_none + num_missing) + ' of ' + str(len(target_obj_data.loops)) + '.')
 
     return success
