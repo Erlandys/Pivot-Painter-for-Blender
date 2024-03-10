@@ -68,11 +68,10 @@ def generate_hierarchy(operator: bpy.types.Operator, context: bpy.types.Context,
         operator.report({'ERROR'}, "Only base mesh objects selected. Possible children objects must be selected.")
         return False
 
-    generate_hierarchy_from_base_meshes(base_mesh_objects, leaves_selection)
-    return True
+    return generate_hierarchy_from_base_meshes(operator, base_mesh_objects, leaves_selection)
 
 
-def generate_hierarchy_from_base_meshes(base_mesh_objects: set[bpy.types.Object], leaves_selection: list[bpy.types.Object]):
+def generate_hierarchy_from_base_meshes(operator: bpy.types.Operator, base_mesh_objects: set[bpy.types.Object], leaves_selection: list[bpy.types.Object]):
     obj_to_overlaps: dict[bpy.types.Object, set[bpy.types.Object]] = create_overlaps_dict(list(base_mesh_objects) + leaves_selection)
 
     def remove_overlap(obj: bpy.types.Object, obj2: bpy.types.Object):
@@ -132,6 +131,12 @@ def generate_hierarchy_from_base_meshes(base_mesh_objects: set[bpy.types.Object]
         objects_to_iterate = new_objects_to_iterate
         idx += 1
         progress_bar.finish()
+
+    if idx > 4:
+        operator.report({'ERROR'}, str(idx) + ' levels hierarchy generated. Simplify hierarchy down to 4 levels, for Pivot Painter to work.')
+        return False
+
+    return True
 
 
 def create_overlaps_dict(objects: list[bpy.types.Object]) -> dict[bpy.types.Object, set[bpy.types.Object]]:
@@ -270,7 +275,6 @@ def copy_uvs(operator: bpy.types.Operator, context: bpy.types.Context, selection
 
     success: bool = num_missing + num_found_none == 0
     if not success:
-        print('Missing ' + str(num_found_none + num_missing) + ' of ' + str(len(target_obj_data.loops)) + '.')
-        operator.report({'WARNING'}, 'Failed to fully match vertices. Missing ' + str(num_found_none + num_missing) + ' of ' + str(len(target_obj_data.loops)) + '.')
+        operator.report({'ERROR'}, 'Failed to fully match vertices. Missing ' + str(num_found_none + num_missing) + ' of ' + str(len(target_obj_data.loops)) + '.')
 
     return success
