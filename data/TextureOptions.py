@@ -17,6 +17,7 @@ class PivotPainterTextureTypeData:
     __build_hierarchy: bool = False
     __test_selection_order: bool = False
     __test_bound_box_center: bool = False
+    __rgba: bool = False
 
     @staticmethod
     def create_alpha_option(
@@ -45,7 +46,8 @@ class PivotPainterTextureTypeData:
             , packer: Type['TexturePacking']
             , texture_suffix: str
             , test_selection_order: bool = False
-            , test_bound_box_center: bool = False):
+            , test_bound_box_center: bool = False
+            , rgba: bool = False):
         new_option = PivotPainterTextureTypeData()
         new_option.__key = key
         new_option.__display_name = display_name
@@ -54,6 +56,7 @@ class PivotPainterTextureTypeData:
         new_option.__texture_suffix = texture_suffix
         new_option.__test_selection_order = test_selection_order
         new_option.__test_bound_box_center = test_bound_box_center
+        new_option.__rgba = rgba
         texture_rgb_options[key] = new_option
 
     def key(self) -> str:
@@ -80,6 +83,9 @@ class PivotPainterTextureTypeData:
 
     def test_bound_box_center(self) -> bool:
         return self.__test_bound_box_center
+
+    def rgba(self) -> bool:
+        return self.__rgba
 
     def get_property_definition(self) -> tuple[str, str, str]:
         return self.__key, self.__display_name, self.__description
@@ -254,6 +260,20 @@ def register():
         description="Will use as rgb values 0",
         packer=PackEmptyRGB,
         texture_suffix="None"
+    )
+
+    ###########################################################
+    #####################  RGBA OPTIONS #######################
+    ###########################################################
+
+    from ..data.TexturePackingFunctions import PackQuaternion
+    PivotPainterTextureTypeData.create_rgb_option(
+        key="quaternion",
+        display_name="Quaternion Rotation",
+        description="Packs quaternion rotation",
+        packer=PackQuaternion,
+        texture_suffix="Quaternion",
+        rgba=True
     )
 
 

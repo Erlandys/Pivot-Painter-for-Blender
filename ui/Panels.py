@@ -39,11 +39,14 @@ class PIVOTPAINTER_PT_Texture(bpy.types.Panel):
                 row.label(text="Texture " + str(idx + 1) + ":")
                 op = row.operator("pivot_painter.remove_texture")
                 op.texture_index = idx
-                col.prop(textures_list_properties[idx], "rgb")
-                col.prop(textures_list_properties[idx], "alpha")
-                col.prop(textures_list_properties[idx], "generate_hdr")
 
                 rgb_option: PivotPainterTextureTypeData = textures_list_properties[idx].get_rgb_option()
+
+                col.prop(textures_list_properties[idx], "rgb")
+                if not rgb_option.rgba():
+                    col.prop(textures_list_properties[idx], "alpha")
+                col.prop(textures_list_properties[idx], "generate_hdr")
+
                 rgb_packer = rgb_option.packer(context, [], textures_list_properties[idx].generate_hdr)
                 alpha_option: PivotPainterTextureTypeData = textures_list_properties[idx].get_alpha_option()
                 alpha_packer = alpha_option.packer(context, [], textures_list_properties[idx].generate_hdr)
@@ -52,13 +55,13 @@ class PIVOTPAINTER_PT_Texture(bpy.types.Panel):
                     col.label(text="OpenEXR, RGBA, Color Depth: Float(Half)", icon="INFO")
                     if not rgb_packer.support_hdr:
                         col.label(text="RGB - " + rgb_option.display_name() + " does not support HDR", icon="ERROR")
-                    if not alpha_packer.support_hdr:
+                    if not rgb_option.rgba() and not alpha_packer.support_hdr:
                         col.label(text="Alpha - " + alpha_option.display_name() + " does not support HDR", icon="ERROR")
                 else:
                     col.label(text="PNG, RGBA, Color Depth: 8", icon="INFO")
                     if not rgb_packer.support_ldr:
                         col.label(text="RGB - " + rgb_option.display_name() + " does not support LDR", icon="ERROR")
-                    if not alpha_packer.support_ldr:
+                    if not rgb_option.rgba() and not alpha_packer.support_ldr:
                         col.label(text="Alpha - " + alpha_option.display_name() + " does not support LDR", icon="ERROR")
                 col.label()
                 col.separator()
@@ -136,8 +139,12 @@ class PIVOTPAINTER_PT_PivotAndRotations(bpy.types.Panel):
             row.prop(pivot_properties, "no_parent_pivot_type")
 
             row = box.row()
-            row.enabled = pivot_properties.enabled and pivot_properties.no_parent_pivot_type == 'bottom_middle'
-            row.prop(pivot_properties, "max_z_difference")
+            row.enabled = pivot_properties.enabled and pivot_properties.no_parent_pivot_type == 'axis_middle'
+            row.prop(pivot_properties, "no_parent_axis")
+
+            row = box.row()
+            row.enabled = pivot_properties.enabled and pivot_properties.no_parent_pivot_type == 'axis_middle'
+            row.prop(pivot_properties, "no_parent_max_axis_difference")
 
         self.layout.separator()
 

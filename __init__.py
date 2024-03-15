@@ -24,8 +24,8 @@ modules = [
     PivotAndRotation,
     CreateTextures,
     MeshOperations,
-    TextureOptions,
-    TexturePackingFunctions
+    TexturePackingFunctions,
+    TextureOptions
 ]
 
 

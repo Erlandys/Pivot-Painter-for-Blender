@@ -107,7 +107,7 @@ class PivotPainterCalculatePivotProperties(PivotPainterPropertyGroup):
 
     no_parent_type_options = [
         ("origin", "Origin", 'Will set objects origin to (0, 0, 0)'),
-        ("bottom_middle", "Bottom middle", 'Will set to middle of lowest vertices')
+        ("axis_middle", "Axis middle", 'Will set to middle of lowest/highest axis vertices')
     ]
     no_parent_pivot_type: bpy.props.EnumProperty(
         items=no_parent_type_options,
@@ -115,14 +115,28 @@ class PivotPainterCalculatePivotProperties(PivotPainterPropertyGroup):
         description="Type of origin for object without parent",
         default="origin")
 
-    max_z_difference: FloatProperty(
-        name="Maximum Z Difference",
+    no_parent_axis_type = [
+        ("x_pos", "+X", 'Will look for highest X vertices'),
+        ("x_neg", "-X", 'Will look for lowest X vertices'),
+        ("y_pos", "+Y", 'Will look for highest Y vertices'),
+        ("y_neg", "-Y", 'Will look for lowest Y vertices'),
+        ("z_pos", "+Z", 'Will look for highest Z vertices'),
+        ("z_neg", "-Z", 'Will look for lowest Z vertices')
+    ]
+    no_parent_axis: bpy.props.EnumProperty(
+        items=no_parent_axis_type,
+        name="No parent axis",
+        description="Axis to look for base",
+        default="z_neg")
+
+    no_parent_max_axis_difference: FloatProperty(
+        name="Maximum Axis Difference",
         default=0.01,
         precision=3,
         min=0.000001,
         soft_max=0.5,
         unit="LENGTH",
-        description="Maximum Z difference from lowest point, when using bottom middle parentless option")
+        description="Maximum Axis difference from lowest point, when using bottom middle parentless option")
 
     type_options = [
         ("face", "Face", 'Will use middle of face'),

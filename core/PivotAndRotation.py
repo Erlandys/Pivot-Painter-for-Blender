@@ -126,23 +126,36 @@ def __find_parentless_pivot(context, obj):
 
     obj_data: bpy.types.Mesh = obj.data
 
-    dtype = [('world_z', float), ('x', float), ('y', float), ('z', float)]
+    dtype = [('axis', float), ('x', float), ('y', float), ('z', float)]
     lowest_items: numpy.array = np.array([], dtype=dtype)
 
     vertex: bpy.types.MeshVertex
     for vertex in obj_data.vertices:
         vertex_position = vertex.co
         world_position = obj.matrix_world @ vertex_position
-        lowest_items = numpy.append(lowest_items, np.array([(world_position[2], vertex_position[0], vertex_position[1], vertex_position[2])], dtype=dtype), axis=0)
+        axis_value = 0.0
+        if pivot_properties.no_parent_axis == 'x_pos':
+            axis_value = -world_position[0]
+        elif pivot_properties.no_parent_axis == 'x_neg':
+            axis_value = world_position[0]
+        elif pivot_properties.no_parent_axis == 'y_pos':
+            axis_value = -world_position[1]
+        elif pivot_properties.no_parent_axis == 'y_neg':
+            axis_value = world_position[1]
+        elif pivot_properties.no_parent_axis == 'z_pos':
+            axis_value = -world_position[2]
+        elif pivot_properties.no_parent_axis == 'z_neg':
+            axis_value = world_position[2]
+        lowest_items = numpy.append(lowest_items, np.array([(axis_value, vertex_position[0], vertex_position[1], vertex_position[2])], dtype=dtype), axis=0)
 
-    lowest_items = np.sort(lowest_items, axis=0, order="world_z")
+    lowest_items = np.sort(lowest_items, axis=0, order="axis")
 
     closest_included_positions: numpy.array = np.array([])
     closest_included_positions.shape = (0, 3)
 
     min_distance = lowest_items[0][0]
     for item in lowest_items:
-        if abs(item[0] - min_distance) <= pivot_properties.max_z_difference:
+        if abs(item[0] - min_distance) <= pivot_properties.no_parent_max_axis_difference:
             closest_included_positions = numpy.append(closest_included_positions, [[item[1], item[2], item[3]]], axis=0)
         else:
             break

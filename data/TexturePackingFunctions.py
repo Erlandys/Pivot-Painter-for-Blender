@@ -200,7 +200,7 @@ class PackAxis(TexturePacking):
         rotation = obj.matrix_world.to_euler('XYZ')
         axis.rotate(rotation)
 
-        axis = convert_blender_to_unreal_direction(axis)
+        axis = convert_blender_to_unreal_direction(axis.normalized())
         if self.is_hdr:
             return axis
 
@@ -265,6 +265,18 @@ class PackExtents(TexturePacking):
 class PackEmptyRGB(TexturePacking):
     def process_object(self, obj: bpy.types.Object) -> float | list[float]:
         return [0, 0, 0]
+
+
+class PackQuaternion(TexturePacking):
+    def process_object(self, obj: bpy.types.Object) -> float | list[float]:
+        rotation = obj.matrix_world.to_euler('XYZ')
+        rotation = convert_blender_to_unreal_rotation(rotation)
+        quaternion = rotation.to_quaternion()
+
+        if self.is_hdr:
+            return [quaternion[0], quaternion[1], quaternion[2], quaternion[3]]
+
+        return compact_normalized_rgba(quaternion)
 
 
 class PackParentsNumRandomDiameter(TexturePackingGroup):

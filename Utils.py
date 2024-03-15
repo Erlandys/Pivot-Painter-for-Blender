@@ -3,6 +3,7 @@ import time
 from ctypes import POINTER, pointer, c_int, cast, c_float
 
 import bpy
+import mathutils
 import numpy
 import numpy as np
 
@@ -51,11 +52,23 @@ def convert_blender_to_unreal_direction(direction):
     return [direction[0], -direction[1], direction[2]]
 
 
+def convert_blender_to_unreal_rotation(rotation):
+    return mathutils.Euler((-rotation[1], -rotation[2], rotation[0]))
+
+
 def compact_normalized_direction(direction):
     return [
         (direction[0] + 1.0) / 2.0,
         (direction[1] + 1.0) / 2.0,
         (direction[2] + 1.0) / 2.0]
+
+
+def compact_normalized_rgba(rgba):
+    return [
+        (rgba[0] + 1.0) / 2.0,
+        (rgba[1] + 1.0) / 2.0,
+        (rgba[2] + 1.0) / 2.0,
+        (rgba[3] + 1.0) / 2.0]
 
 
 def reorder_selection_by_parents(selection) -> list['bpy.types.Object']:

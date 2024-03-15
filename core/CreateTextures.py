@@ -121,13 +121,15 @@ def create_texture(operator: bpy.types.Operator, context: bpy.types.Context, sel
     rgb_packer: TexturePacking = rgb_option.packer(context, selection, is_hdr)
     alpha_packer: TexturePacking = alpha_option.packer(context, selection, is_hdr)
 
-    if not rgb_packer.support_type(is_hdr) or not alpha_packer.support_type(is_hdr):
+    if not rgb_packer.support_type(is_hdr) or (not rgb_option.rgba() and not alpha_packer.support_type(is_hdr)):
         operator.report({'ERROR'}, 'Texture ' + str(texture_idx) + ' has HDR mismatches.')
         return
 
-    texture_name = selection[0].name + '_' + rgb_option.suffix() + '_' + alpha_option.suffix()
+    texture_name = selection[0].name + '_' + rgb_option.suffix()
+    if not rgb_option.rgba():
+        texture_name += '_' + alpha_option.suffix()
     if is_hdr:
-        texture_name = texture_name + '_HDR'
+        texture_name += '_HDR'
 
     # Check if there is already the texture, else create new.
     if not properties.create_new:
@@ -135,8 +137,8 @@ def create_texture(operator: bpy.types.Operator, context: bpy.types.Context, sel
             if img.name == texture_name:
                 bpy.data.images.remove(img)
 
-    image = bpy.data.images.new(name=texture_name, width=size[0], height=size[1], float_buffer=is_hdr)
-    image.pixels = set_pixels(selection, rgb_packer, alpha_packer, progress_bar, size)
+    image = bpy.data.images.new(name=texture_name, width=size[0], height=size[1], float_buffer=is_hdr, is_data=True)
+    image.pixels = set_pixels(selection, rgb_packer, alpha_packer, rgb_option.rgba(), progress_bar, size)
 
     if not properties.save_textures:
         return
@@ -155,7 +157,7 @@ def create_texture(operator: bpy.types.Operator, context: bpy.types.Context, sel
     image.save_render(image_path)
 
 
-def set_pixels(selection: list[bpy.types.Object], rgb_packer: TexturePacking, alpha_packer: TexturePacking, progress_bar: ProgressBar, size: list[int]) -> list[float]:
+def set_pixels(selection: list[bpy.types.Object], rgb_packer: TexturePacking, alpha_packer: TexturePacking, rgba: bool, progress_bar: ProgressBar, size: list[int]) -> list[float]:
     pixels: list[float] = numpy.ones(size[0] * size[1] * 4, dtype=float).tolist()
 
     local_progress_bar = progress_bar.new_sub_progress('Calculating {1} of {0} pixels', len(selection) + size[0] * size[1] / 4)
@@ -164,7 +166,10 @@ def set_pixels(selection: list[bpy.types.Object], rgb_packer: TexturePacking, al
         obj = selection[idx]
 
         rgb_values = rgb_packer.process_object(obj)
-        alpha_value = alpha_packer.process_object(obj)
+        if not rgba:
+            alpha_value = alpha_packer.process_object(obj)
+        else:
+            alpha_value = rgb_values[3]
 
         x, y = get_xy_from_index(size, idx)
         pixel_index = x + (y * size[0])
@@ -176,10 +181,13 @@ def set_pixels(selection: list[bpy.types.Object], rgb_packer: TexturePacking, al
         local_progress_bar += 1
 
     for idx in range(0, size[0] * size[1], 4):
-        if rgb_packer.has_post_process():
-            pixels[idx:idx + 2] = rgb_packer.post_process(pixels[idx:idx + 2])
-        if alpha_packer.has_post_process():
-            pixels[idx + 3] = alpha_packer.post_process(pixels[idx + 3])
+        if rgba:
+            pixels[idx:idx + 3] = rgb_packer.post_process(pixels[idx:idx + 3])
+        else:
+            if rgb_packer.has_post_process():
+                pixels[idx:idx + 2] = rgb_packer.post_process(pixels[idx:idx + 2])
+            if alpha_packer.has_post_process():
+                pixels[idx + 3] = alpha_packer.post_process(pixels[idx + 3])
         local_progress_bar += 1
 
     local_progress_bar.finish()
@@ -221,18 +229,18 @@ def create_textures(operator: bpy.types.Operator, context: bpy.types.Context):
             if not rgb_packer.support_hdr:
                 not_supported_texture = idx
                 break
-            if not alpha_packer.support_hdr:
+            if not rgb_option.rgba() and not alpha_packer.support_hdr:
                 not_supported_texture = idx
                 break
         else:
             if not rgb_packer.support_ldr:
                 not_supported_texture = idx
                 break
-            if not alpha_packer.support_ldr:
+            if not rgb_option.rgba() and not alpha_packer.support_ldr:
                 not_supported_texture = idx
                 break
 
-        if rgb_option.test_selection_order() or alpha_option.test_selection_order():
+        if rgb_option.test_selection_order() or (not rgb_option.rgba() and alpha_option.test_selection_order()):
             test_selection_order = True
 
     objects_without_order = []
