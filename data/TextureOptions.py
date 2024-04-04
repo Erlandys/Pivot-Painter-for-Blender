@@ -199,6 +199,14 @@ def register():
         packer=PackPivot,
         texture_suffix="PivotPoint"
     )
+    from ..data.TexturePackingFunctions import PackRelativeParentPivot
+    PivotPainterTextureTypeData.create_rgb_option(
+        key="parent_relative_pivot_point",
+        display_name="Parent Relative Pivot Point",
+        description="Pivot relative to parent position.",
+        packer=PackRelativeParentPivot,
+        texture_suffix="RelativePivot"
+    )
     from ..data.TexturePackingFunctions import PackOrigin
     PivotPainterTextureTypeData.create_rgb_option(
         key="origin_position",

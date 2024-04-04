@@ -194,6 +194,17 @@ class PackPivot(TexturePacking):
         return convert_blender_to_unreal_location(pivot)
 
 
+class PackRelativeParentPivot(TexturePacking):
+    support_ldr = False
+
+    def process_object(self, obj: bpy.types.Object) -> float | list[float]:
+        pivot = obj.matrix_world.to_translation()
+        if obj.parent:
+            parent_pivot = obj.parent.matrix_world.to_translation()
+            pivot -= parent_pivot
+        return convert_blender_to_unreal_location(pivot)
+
+
 class PackAxis(TexturePacking):
     def process_object(self, obj: bpy.types.Object) -> float | list[float]:
         axis = self.get_axis(obj)

@@ -217,7 +217,7 @@ def prepare_mesh(context, selection):
     obj: bpy.types.Object
 
     # Cache current cursor location
-    cached_cursor_location = bpy.context.scene.cursor.location
+    cached_cursor_location = bpy.context.scene.cursor.location.copy()
 
     from ..Utils import ProgressBar
     progress = ProgressBar('Processing meshes {1} of {0}', len(selection))
@@ -235,6 +235,7 @@ def prepare_mesh(context, selection):
             else:
                 pivot = __find_parentless_pivot(context, obj)
             __set_origin(obj, obj.matrix_world @ pivot)
+            pivot = mathutils.Vector((0, 0, 0))
         else:
             pivot = obj.matrix_world.inverted() @ obj.matrix_world.translation
 
