@@ -256,6 +256,20 @@ class PivotPainterDefaultMeshOperationsProperties(PivotPainterPropertyGroup):
         name='Base Mesh Index',
     )
 
+    show_empty_axis_meshes: BoolProperty(
+        name="Show No Wind Objects",
+        default=True)
+
+    empty_axis_meshes: bpy.props.CollectionProperty(
+        type=PivotPainterHierarchyBaseMeshProperties,
+        name='No Wind Meshes',
+        description="List of no wind meshes, which will generate extent as 0, to ignore wind movement."
+    )
+
+    empty_axis_mesh_index: bpy.props.IntProperty(
+        name='No Wind Mesh Index',
+    )
+
 
 property_classes = [
     (PivotPainterTextureProperties, 'pp_texture_properties'),

@@ -13,14 +13,14 @@ from ..Utils import *
 ###########################################################
 
 class TexturePacking:
-    properties: 'Properties.PivotPainterTextureProperties'
+    context: 'bpy.types.Context'
     is_hdr: bool
     support_hdr: bool = True
     support_ldr: bool = True
     selection: list[bpy.types.Object] = []
 
-    def __init__(self, properties: 'Properties.PivotPainterTextureProperties', selection: list[bpy.types.Object], is_hdr: bool):
-        self.properties = properties
+    def __init__(self, context: 'bpy.types.Context', selection: list[bpy.types.Object], is_hdr: bool):
+        self.context = context
         self.selection = selection
         self.is_hdr = is_hdr
 
@@ -44,7 +44,7 @@ class TexturePackingGroup(TexturePacking):
 
     def add_dependency(self, dependency_type: Type['TexturePacking']):
         dep = TexturePacking.__new__(dependency_type)
-        dep.__init__(self.properties, self.is_hdr)
+        dep.__init__(self.context, [], self.is_hdr)
         self.__dependencies.append(dep)
 
     def process_object(self, obj: bpy.types.Object) -> float | list[float]:
@@ -157,9 +157,17 @@ class PackExtent(TexturePacking):
         # Convert to Unreal Measures
         extent *= 100
 
+        from ..Properties import get_mesh_operations_settings
+        properties = get_mesh_operations_settings(self.context)
+        if obj.name in properties.empty_axis_meshes:
+            extent = 0
+
         if not self.is_hdr:
             extent /= 8
-            extent = np.clip(extent, 1, 256) / 256
+            if obj.name in properties.empty_axis_meshes:
+                extent = np.clip(extent, 0, 256) / 256
+            else:
+                extent = np.clip(extent, 1, 256) / 256
         return extent
 
     def get_extent(self, obj: bpy.types.Object) -> float:
@@ -291,8 +299,8 @@ class PackQuaternion(TexturePacking):
 
 
 class PackParentsNumRandomDiameter(TexturePackingGroup):
-    def __init__(self, properties: 'Properties.PivotPainterTextureProperties', is_hdr: bool):
-        super().__init__(properties, is_hdr)
+    def __init__(self, context: 'bpy.types.Context', is_hdr: bool):
+        super().__init__(context, [], is_hdr)
         self.add_dependency(PackNormalizedObjectParentsNum)
         self.add_dependency(PackRandomFloat)
         self.add_dependency(PackDiagonalBoundBoxScaledLength)

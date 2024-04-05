@@ -361,6 +361,40 @@ class PivotPainter_OT_GenerateHierarchy(bpy.types.Operator):
 ###########################################################
 
 
+# noinspection PyPep8Naming
+class PivotPainter_OT_SelectEmptyAxisMeshes(bpy.types.Operator):
+    bl_label = "Fill No Wind Meshes"
+    bl_idname = "pivot_painter.fill_empty_axis_meshes"
+    bl_description = "Will fill list of objects, for which extent will be set to 0"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
+
+    def execute(self, context):
+        selection: list[bpy.types.Object] = []
+        for obj in context.selected_objects:
+            if obj is None or obj.type != 'MESH':
+                continue
+            selection.append(obj)
+
+        properties = get_mesh_operations_settings(context)
+        properties.empty_axis_meshes.clear()
+
+        for obj in selection:
+            new_base_mesh = properties.empty_axis_meshes.add()
+            new_base_mesh.name = obj.name
+
+        self.report({'INFO'}, "No wind meshes selection set")
+        return {'FINISHED'}
+
+
+###########################################################
+###########################################################
+###########################################################
+
+
 def register():
     Utils.register_classes_from_module(__name__, bpy.types.Operator)
 

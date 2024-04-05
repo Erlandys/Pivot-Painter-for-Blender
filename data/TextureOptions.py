@@ -69,10 +69,9 @@ class PivotPainterTextureTypeData:
         return self.__description
 
     def packer(self, context: bpy.types.Context, selection: list[bpy.types.Object], is_hdr: bool) -> 'TexturePacking':
-        from ..Properties import get_texture_settings
         from ..data.TexturePackingFunctions import TexturePacking
         packer_object: TexturePacking = TexturePacking.__new__(self.__packer)
-        packer_object.__init__(get_texture_settings(context), selection, is_hdr)
+        packer_object.__init__(context, selection, is_hdr)
         return packer_object
 
     def suffix(self):
