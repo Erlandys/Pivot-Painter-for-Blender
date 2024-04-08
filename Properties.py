@@ -256,6 +256,20 @@ class PivotPainterDefaultMeshOperationsProperties(PivotPainterPropertyGroup):
         name='Base Mesh Index',
     )
 
+    show_generate_distant_hierarchy: BoolProperty(
+        name="Show Generate Distant Hierarchy",
+        default=True)
+
+    base_distant_meshes: bpy.props.CollectionProperty(
+        type=PivotPainterHierarchyBaseMeshProperties,
+        name='Base Distant Meshes',
+        description="List of base meshes which will be used to generate hierarchy for distant meshes (meshes which does not have any overlaps to parents)"
+    )
+
+    base_distant_mesh_index: bpy.props.IntProperty(
+        name='Base Distant Mesh Index',
+    )
+
     show_empty_axis_meshes: BoolProperty(
         name="Show No Wind Objects",
         default=True)

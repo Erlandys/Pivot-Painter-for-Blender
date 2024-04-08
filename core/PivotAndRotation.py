@@ -13,110 +13,52 @@ def __set_origin(obj: bpy.types.Object, global_origin=mathutils.Vector((0, 0, 0)
         bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
 
 
-def __find_pivot(context, obj):
+def __find_pivot(context, obj, obj_structs: tuple[mathutils.kdtree.KDTree, mathutils.bvhtree.BVHTree, bmesh.types.BMesh], parent_structs: tuple[mathutils.kdtree.KDTree, mathutils.bvhtree.BVHTree, bmesh.types.BMesh]):
     pivot_properties = get_calculate_pivot_settings(context)
     item_type = pivot_properties.item_type
 
     if item_type == 'overlap':
-        from mathutils.bvhtree import BVHTree
-
-        def create_bvh_tree_from_object(obj) -> tuple[bmesh.types.BMesh, BVHTree]:
-            bm: bmesh.types.BMesh = bmesh.new()
-            bm.from_mesh(obj.data)
-            bm.transform(obj.matrix_world)
-            bm.faces.ensure_lookup_table()
-            bvh = BVHTree.FromBMesh(bm)
-            return bm, bvh
-
-        def check_bvh_intersection(obj_1, obj_2) -> tuple[bool, mathutils.Vector]:
-            bm1, bvh1 = create_bvh_tree_from_object(obj_1)
-            bm2, bvh2 = create_bvh_tree_from_object(obj_2)
-
-            overlapping_faces: list[tuple[int, int]] = bvh1.overlap(bvh2)
+        def check_bvh_intersection(obj_1: tuple[mathutils.kdtree.KDTree, mathutils.bvhtree.BVHTree, bmesh.types.BMesh], obj_2: tuple[mathutils.kdtree.KDTree, mathutils.bvhtree.BVHTree, bmesh.types.BMesh]) -> tuple[bool, mathutils.Vector]:
+            overlapping_faces: list[tuple[int, int]] = obj_1[1].overlap(obj_2[1])
 
             if len(overlapping_faces) == 0:
-                bm1.free()
-                bm2.free()
                 return False, mathutils.Vector((0, 0, 0))
 
             overlapping_face_positions = np.array([])
             overlapping_face_positions.shape = (0, 3)
             for face in overlapping_faces:
-                face_position = bm1.faces[face[0]].calc_center_median()
+                face_position = obj_1[2].faces[face[0]].calc_center_median()
                 overlapping_face_positions = numpy.append(overlapping_face_positions, [[face_position[0], face_position[1], face_position[2]]], axis=0)
-
-            bm1.free()
-            bm2.free()
 
             result = mathutils.Vector((overlapping_face_positions.mean(axis=0)))
 
             return True, result
 
-        success, result = check_bvh_intersection(obj, obj.parent)
+        success, result = check_bvh_intersection(obj_structs, parent_structs)
         if success:
-            return obj.matrix_world.inverted() @ result
-        item_type = 'vertex'
+            return result
 
-    parent_obj = obj.parent
-    parent_matrix_world_inverted = parent_obj.matrix_world.inverted()
-
-    obj_data: bpy.types.Mesh = obj.data
-
-    min_distance = 99999999999
-    closest_item_position = (0, 0, 0)
-
-    dtype = [('distance', float), ('x', float), ('y', float), ('z', float)]
-    closest_items: numpy.array = np.array([], dtype=dtype)
-
-    def process_pivot_position(item_local_position):
-        nonlocal min_distance
-        nonlocal closest_item_position
-        nonlocal closest_items
-
-        item_world_position = obj.matrix_world @ item_local_position
-        parent_relative_pos = parent_matrix_world_inverted @ item_world_position
-
-        (_, closest_point_on_mesh, _, _) = parent_obj.closest_point_on_mesh(origin=parent_relative_pos)
-
-        world_point_on_mesh = parent_obj.matrix_world @ closest_point_on_mesh
-
-        distance = (world_point_on_mesh - item_world_position).length
-
-        if min_distance > distance:
-            min_distance = distance
-            closest_item_position = item_local_position
-
-        closest_items = numpy.append(closest_items, np.array([(distance, item_local_position[0], item_local_position[1], item_local_position[2])], dtype=dtype), axis=0)
-
-    if item_type == 'vertex':
-        vertex: bpy.types.MeshVertex
-        for vertex in obj_data.vertices:
-            vertex_position = vertex.co
-            process_pivot_position(vertex_position)
-    else:
-        bm = bmesh.new()
-        bm.from_mesh(obj_data)
-
-        face: bmesh.types.BMFace
-        for face in bm.faces:
-            face_center = face.calc_center_median()
-            process_pivot_position(face_center)
+    closest_distance = 1e9
+    closest_vertex = mathutils.Vector()
+    for vertex in obj.data.vertices:
+        world_vertex = obj.matrix_world @ vertex.co
+        data = parent_structs[0].find_n(world_vertex, 1)
+        if closest_distance > data[0][2]:
+            closest_distance = data[0][2]
+            closest_vertex = vertex.co
 
     if pivot_properties.calculation_type == 'mean':
-        closest_items = np.sort(closest_items, axis=0, order="distance")
-
         closest_included_positions: numpy.array = np.array([])
         closest_included_positions.shape = (0, 3)
 
-        for item in closest_items:
-            if abs(item[0] - min_distance) <= pivot_properties.max_distance:
-                closest_included_positions = numpy.append(closest_included_positions, [[item[1], item[2], item[3]]], axis=0)
-            else:
-                break
+        for vertex in obj.parent.data.vertices:
+            world_vertex = obj.parent.matrix_world @ vertex.co
+            data = obj_structs[0].find_range(world_vertex, closest_distance + pivot_properties.max_distance)
+            for x in data:
+                closest_included_positions = numpy.append(closest_included_positions, [[x[0][0], x[0][1], x[0][2]]], axis=0)
+        closest_vertex = mathutils.Vector((closest_included_positions.mean(axis=0)))
 
-        closest_item_position = mathutils.Vector((closest_included_positions.mean(axis=0)))
-
-    return closest_item_position
+    return closest_vertex
 
 
 def __find_parentless_pivot(context, obj):
@@ -207,49 +149,113 @@ def __find_rotation(context, obj, pivot):
     furthest_location = coords[np.where(distances < properties.max_distance)].mean(axis=0)
     furthest_location = mathutils.Vector((furthest_location[0], furthest_location[1], furthest_location[2]))
 
-    __set_rotation(obj, (obj.matrix_world @ furthest_location) - (obj.matrix_world @ pivot))
+    return (obj.matrix_world @ furthest_location) - (obj.matrix_world @ pivot)
 
 
 def prepare_mesh(context, selection):
+    from math import ceil
+    from ..Utils import ProgressBar
+
     pivot_properties = get_calculate_pivot_settings(context)
     rotation_properties = get_calculate_rotation_settings(context)
 
     obj: bpy.types.Object
 
-    # Cache current cursor location
-    cached_cursor_location = bpy.context.scene.cursor.location.copy()
+    with bpy.context.temp_override(selected_editable_objects=selection):
+        bpy.ops.object.transform_apply(location=pivot_properties.enabled, rotation=rotation_properties.enabled, scale=True)
 
-    from ..Utils import ProgressBar
-    progress = ProgressBar('Processing meshes {1} of {0}', len(selection))
+    progress = ProgressBar('Arranging meshes {1} of {0}', len(selection))
 
+    obj_by_levels: list[list[bpy.types.Object]] = []
+
+    def create_mesh_data(obj: bpy.types.Object):
+        kd = mathutils.kdtree.KDTree(len(obj.data.vertices))
+        for idx, vertex in enumerate(obj.data.vertices):
+            kd.insert(obj.matrix_world @ vertex.co, idx)
+        kd.balance()
+
+        bm: bmesh.types.BMesh = bmesh.new()
+        bm.from_mesh(obj.data)
+        bm.transform(obj.matrix_world)
+        bm.faces.ensure_lookup_table()
+        bvh = mathutils.bvhtree.BVHTree.FromBMesh(bm)
+
+        return kd, bvh, bm
+
+    step = ceil(len(selection) / 100)
     idx = 0
     for obj in selection:
+        num_parents = 0
+        parent = obj.parent
+        while parent is not None:
+            parent = parent.parent
+            num_parents += 1
+        for i in range(len(obj_by_levels), num_parents + 1):
+            obj_by_levels.append([])
+        obj_by_levels[num_parents].append(obj)
+
         idx += 1
-        if obj.type != 'MESH':
-            progress += 1
-            continue
 
-        if pivot_properties.enabled:
-            if obj.parent is not None and obj.parent.type == 'MESH':
-                pivot = __find_pivot(context, obj)
-            else:
-                pivot = __find_parentless_pivot(context, obj)
-            __set_origin(obj, obj.matrix_world @ pivot)
-            pivot = mathutils.Vector((0, 0, 0))
-        else:
-            pivot = obj.matrix_world.inverted() @ obj.matrix_world.translation
-
-        if not rotation_properties.enabled:
-            progress += 1
-            continue
-
-        with bpy.context.temp_override(selected_editable_objects=[obj]):
-            bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-
-        __find_rotation(context, obj, pivot)
-        progress += 1
+        if idx % step == step - 1:
+            progress += step
 
     progress.finish()
 
-    # Set back cursor location to cached
-    bpy.context.scene.cursor.location = cached_cursor_location
+    progress = ProgressBar('Processing meshes {1} of {0}', len(selection))
+    target_idx = len(obj_by_levels) - 1
+    while target_idx >= 0:
+        obj_to_data: dict[bpy.types.Object, tuple[mathutils.kdtree.KDTree, mathutils.bvhtree.BVHTree, bmesh.types.BMesh]] = {}
+        obj_to_rot_data: dict[bpy.types.Object, tuple[mathutils.Quaternion, str]] = {}
+
+        step = ceil(len(obj_by_levels[target_idx]) / 100)
+
+        idx = 0
+        for obj in obj_by_levels[target_idx]:
+            if pivot_properties.enabled:
+                if obj.parent is not None and obj.parent.type == 'MESH':
+                    mesh_data = create_mesh_data(obj)
+
+                    if obj.parent not in obj_to_data:
+                        obj_to_data[obj.parent] = create_mesh_data(obj.parent)
+
+                    parent_data = obj_to_data[obj.parent]
+                    pivot = __find_pivot(context, obj, mesh_data, parent_data)
+                else:
+                    pivot = __find_parentless_pivot(context, obj)
+
+                obj.data.transform(mathutils.Matrix.Translation(-pivot))
+                obj.location += pivot
+                for c in obj.children:
+                    c.matrix_parent_inverse.translation -= pivot
+
+            if rotation_properties.enabled:
+                rotation = __find_rotation(context, obj, mathutils.Vector((0, 0, 0))).normalized()
+
+                current_rotation_mode = obj.rotation_mode
+                obj.rotation_mode = "QUATERNION"
+
+                quat = obj.matrix_world.to_quaternion().inverted() @ rotation.to_track_quat('X', 'Z')
+
+                obj.rotation_quaternion = quat.inverted()
+                obj_to_rot_data[obj] = quat, current_rotation_mode
+
+            idx += 1
+
+            if idx % step == step - 1:
+                progress += step
+
+        if rotation_properties.enabled:
+            idx = 0
+            with bpy.context.temp_override(selected_editable_objects=obj_by_levels[target_idx]):
+                bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+            for obj, data in obj_to_rot_data.items():
+                obj.rotation_quaternion = data[0]
+                obj.rotation_mode = data[1]
+                idx += 1
+
+        if len(obj_by_levels[target_idx]) > 0:
+            bpy.context.view_layer.update()
+
+        target_idx -= 1
+
+    progress.finish()

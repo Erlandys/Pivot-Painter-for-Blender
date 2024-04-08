@@ -5,6 +5,9 @@ import mathutils.kdtree
 
 
 def split_mesh(selection: list[bpy.types.Object]):
+    from math import ceil
+    from ..Utils import ProgressBar
+
     collection: bpy.types.Collection = None
     new_collection_name: str = None
     for obj in selection:
@@ -28,12 +31,20 @@ def split_mesh(selection: list[bpy.types.Object]):
     bpy.ops.mesh.separate(type='LOOSE')
 
     new_selection = bpy.context.selected_objects
+
+    progress_bar = ProgressBar("Move {1} of {0} objects to collection", len(new_selection))
+    step = ceil(len(new_selection) * 0.01)
+
+    idx = 0
     for obj in new_selection:
         if obj.users_collection is not None:
             for obj_collection in obj.users_collection:
                 if obj_collection is not None:
                     obj_collection.objects.unlink(obj)
         new_collection.objects.link(obj)
+        idx += 1
+        if idx % step == step - 1:
+            progress_bar += step
 
     for obj in selection:
         obj.hide_set(True)
@@ -72,6 +83,9 @@ def generate_hierarchy(operator: bpy.types.Operator, context: bpy.types.Context,
 
 
 def generate_hierarchy_from_base_meshes(operator: bpy.types.Operator, base_mesh_objects: set[bpy.types.Object], leaves_selection: list[bpy.types.Object]):
+    from math import ceil
+    from ..Utils import ProgressBar
+
     obj_to_overlaps: dict[bpy.types.Object, set[bpy.types.Object]] = create_overlaps_dict(list(base_mesh_objects) + leaves_selection)
 
     def remove_overlap(obj: bpy.types.Object, obj2: bpy.types.Object):
@@ -89,13 +103,8 @@ def generate_hierarchy_from_base_meshes(operator: bpy.types.Operator, base_mesh_
 
         remove_overlap(child, parent)
 
-        bpy.ops.object.select_all(action='DESELECT')
-        child.select_set(True)
-        parent.select_set(True)
-        bpy.context.view_layer.objects.active = parent
-        bpy.ops.object.parent_set()
-        child.select_set(False)
-        parent.select_set(False)
+        child.parent = parent
+        child.matrix_parent_inverse = parent.matrix_world.inverted()
 
     # All base meshes must be in iterated objects from the beginning
     iterated_objects: set[bpy.types.Object] = base_mesh_objects
@@ -103,20 +112,25 @@ def generate_hierarchy_from_base_meshes(operator: bpy.types.Operator, base_mesh_
     # First iteration goes through base meshes, then goes through added children
     objects_to_iterate = list(iterated_objects)
 
-    idx = 0
-    from ..Utils import ProgressBar
+    layer_idx = 0
 
     while len(objects_to_iterate) > 0:
         new_objects_to_iterate = []
-        progress_bar = ProgressBar(str(idx + 1) + " iteration, on {1} of {0} objects", len(objects_to_iterate))
+        progress_bar = ProgressBar(str(layer_idx + 1) + " iteration, on {1} of {0} objects", len(objects_to_iterate))
+        idx = 0
+        step = ceil(len(objects_to_iterate) * 0.01)
         for obj in objects_to_iterate:
             if obj not in obj_to_overlaps:
-                progress_bar += 1
+                idx += 1
+                if idx % step == step - 1:
+                    progress_bar += step
                 continue
 
             overlapping_objects = obj_to_overlaps[obj].copy()
             if len(overlapping_objects) < 1:
-                progress_bar += 1
+                idx += 1
+                if idx % step == step - 1:
+                    progress_bar += step
                 continue
             for overlapped_obj in overlapping_objects:
                 if overlapped_obj in iterated_objects:
@@ -125,15 +139,20 @@ def generate_hierarchy_from_base_meshes(operator: bpy.types.Operator, base_mesh_
                 set_parent(obj, overlapped_obj)
                 iterated_objects.add(overlapped_obj)
                 new_objects_to_iterate.append(overlapped_obj)
-            progress_bar += 1
+            idx += 1
+            if idx % step == step - 1:
+                progress_bar += step
 
         # Add all added children as next layer objects
         objects_to_iterate = new_objects_to_iterate
-        idx += 1
+        layer_idx += 1
         progress_bar.finish()
 
-    if idx > 4:
-        operator.report({'ERROR'}, str(idx) + ' levels hierarchy generated. Simplify hierarchy down to 4 levels, for Pivot Painter to work.')
+        bpy.context.view_layer.update()
+
+
+    if layer_idx > 4:
+        operator.report({'ERROR'}, str(layer_idx) + ' levels hierarchy generated. Simplify hierarchy down to 4 levels, for Pivot Painter to work.')
         return False
 
     return True
@@ -141,6 +160,7 @@ def generate_hierarchy_from_base_meshes(operator: bpy.types.Operator, base_mesh_
 
 def create_overlaps_dict(objects: list[bpy.types.Object]) -> dict[bpy.types.Object, set[bpy.types.Object]]:
     import bmesh
+    from math import ceil
     from mathutils.bvhtree import BVHTree
     from ..Utils import ProgressBar
 
@@ -153,18 +173,31 @@ def create_overlaps_dict(objects: list[bpy.types.Object]) -> dict[bpy.types.Obje
         bm.free()
         return bvh
 
-    progress_bar = ProgressBar("Generating overlaps", len(objects) * 2)
+    progress_bar = ProgressBar("Create BVH trees for overlaps", len(objects))
+    step = ceil(len(objects) * 0.01)
+
     obj_to_bvh_tree: dict[bpy.types.Object, BVHTree] = {}
+    idx = 0
     for obj in objects:
         obj_to_bvh_tree[obj] = create_bvh_tree_from_object(obj)
-        progress_bar += 1
+        idx += 1
+        if idx % step == step - 1:
+            progress_bar += step
+
+    progress_bar.finish()
+    progress_bar = ProgressBar("Evaluate overlaps {1} of {0}", len(objects))
 
     obj_to_overlaps: dict[bpy.types.Object, set[bpy.types.Object]] = {}
-    for obj in objects:
+
+    idx = 0
+    for i in range(0, len(objects)):
+        obj = objects[i]
         first_bvh = obj_to_bvh_tree[obj]
-        for obj2 in objects:
+        for j in range(i + 1, len(objects)):
+            obj2 = objects[j]
             if obj == obj2:
                 continue
+
             second_bvh = obj_to_bvh_tree[obj2]
             if len(first_bvh.overlap(second_bvh)) == 0:
                 continue
@@ -180,19 +213,21 @@ def create_overlaps_dict(objects: list[bpy.types.Object]) -> dict[bpy.types.Obje
             else:
                 if obj not in obj_to_overlaps[obj2]:
                     obj_to_overlaps[obj2].add(obj)
-        progress_bar += 1
+        idx += 1
+        if idx % step == step - 1:
+            progress_bar += step
 
     return obj_to_overlaps
 
 
 def copy_uvs(operator: bpy.types.Operator, context: bpy.types.Context, selection: list[bpy.types.Object]):
     from ..core.CreateTextures import find_texture_dimensions, create_uv_map
+    from math import ceil
+    from ..Properties import get_mesh_operations_settings, get_texture_settings
+    from ..Utils import ProgressBar
 
     size = find_texture_dimensions(selection)
     create_uv_map(context, selection, size)
-
-    from ..Properties import get_mesh_operations_settings, get_texture_settings
-    from ..Utils import ProgressBar
 
     texture_properties = get_texture_settings(context)
     properties = get_mesh_operations_settings(context)
@@ -240,6 +275,9 @@ def copy_uvs(operator: bpy.types.Operator, context: bpy.types.Context, selection
 
     num_found_none = 0
     num_missing = 0
+    passed = 0
+    idx = 0
+    step = ceil(len(selection) * 0.01)
     for obj in selection:
         obj_data: bpy.types.Mesh = obj.data
 
@@ -267,14 +305,90 @@ def copy_uvs(operator: bpy.types.Operator, context: bpy.types.Context, selection
 
         obj_data.uv_layers[texture_properties.uv_map_name].active = False
 
-        progress += len(obj_data.loops)
+        idx += 1
+        passed += len(obj_data.loops)
+        if idx % step == step - 1:
+            progress += passed
+            passed = 0
+
+    progress.finish()
 
     target_obj_data.uv_layers[texture_properties.uv_map_name].active = True
-
-    progress.finish(True)
 
     success: bool = num_missing + num_found_none == 0
     if not success:
         operator.report({'ERROR'}, 'Failed to fully match vertices. Missing ' + str(num_found_none + num_missing) + ' of ' + str(len(target_obj_data.loops)) + '.')
 
     return success
+
+
+def generate_distant_hierarchy(operator: bpy.types.Operator, context: bpy.types.Context, selection: list[bpy.types.Object]):
+    from ..Properties import get_mesh_operations_settings
+
+    properties = get_mesh_operations_settings(context)
+
+    if len(properties.base_distant_meshes) == 0:
+        operator.report({'ERROR'}, 'No base meshes were selected')
+        return False
+
+    base_mesh_objects = set()
+    for base_mesh in properties.base_distant_meshes:
+        if bpy.data.objects.find(base_mesh.name) == -1:
+            operator.report({'ERROR'}, "Base mesh '" + base_mesh.name + "' does not exist.\nRecreate base meshes list.")
+            return False
+        base_mesh_obj: bpy.types.Object = bpy.data.objects[base_mesh.name]
+        if base_mesh_obj.type != 'MESH':
+            operator.report({'ERROR'}, "Base mesh '" + base_mesh.name + "' is not a mesh.\nRecreate base meshes list.")
+            return False
+        base_mesh_objects.add(base_mesh_obj)
+
+    leaves_selection = selection
+    for obj in base_mesh_objects:
+        if obj in leaves_selection:
+            leaves_selection.remove(obj)
+
+    if len(leaves_selection) == 0:
+        operator.report({'ERROR'}, "Only base mesh objects selected. Possible children objects must be selected.")
+        return False
+
+    return generate_hierarchy_from_base_distant_meshes(operator, base_mesh_objects, leaves_selection)
+
+
+def generate_hierarchy_from_base_distant_meshes(operator: bpy.types.Operator, base_mesh_objects: set[bpy.types.Object], leaves_selection: list[bpy.types.Object]):
+    from math import ceil
+    from ..Utils import ProgressBar
+
+    mesh_to_kd: dict[bpy.types.Object, mathutils.kdtree.KDTree] = {}
+    for obj in base_mesh_objects:
+        kd = mathutils.kdtree.KDTree(len(obj.data.vertices))
+        for idx, vertex in enumerate(obj.data.vertices):
+            kd.insert(obj.matrix_world @ vertex.co, idx)
+        kd.balance()
+        mesh_to_kd[obj] = kd
+
+    progress_bar = ProgressBar("Looking for parents on {1} of {0} objects", len(leaves_selection))
+
+    idx = 0
+    step = ceil(len(leaves_selection) * 0.01)
+    for leaf in leaves_selection:
+        closest_distance = 1e9
+        closest_mesh = None
+        for vertex in leaf.data.vertices:
+            world_vertex = leaf.matrix_world @ vertex.co
+            for base_mesh, kd in mesh_to_kd.items():
+                data = kd.find_n(world_vertex, 1)
+                if closest_distance > data[0][2]:
+                    closest_distance = data[0][2]
+                    closest_mesh = base_mesh
+        if closest_mesh is not None:
+            leaf.parent = closest_mesh
+            leaf.matrix_parent_inverse = closest_mesh.matrix_world.inverted()
+        if idx % step == step - 1:
+            progress_bar += step
+        idx += 1
+
+    progress_bar.finish()
+
+    bpy.context.view_layer.update()
+
+    return True

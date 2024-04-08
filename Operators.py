@@ -362,6 +362,93 @@ class PivotPainter_OT_GenerateHierarchy(bpy.types.Operator):
 
 
 # noinspection PyPep8Naming
+class PivotPainter_OT_SelectBaseDistantMeshes(bpy.types.Operator):
+    bl_label = "Fill Base Distant Meshes"
+    bl_idname = "pivot_painter.fill_base_distant_meshes_list"
+    bl_description = "Will set base meshes from currently selected objects"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
+
+    def execute(self, context):
+        if len(context.selected_objects) < 1:
+            self.report({'ERROR'}, "Atleast one object needs to be selected")
+            return {'CANCELLED'}
+
+        selection: list[bpy.types.Object] = []
+        for obj in context.selected_objects:
+            if obj is None or obj.type != 'MESH':
+                continue
+            selection.append(obj)
+
+        properties = get_mesh_operations_settings(context)
+        properties.base_distant_meshes.clear()
+
+        for obj in selection:
+            new_base_mesh = properties.base_distant_meshes.add()
+            new_base_mesh.name = obj.name
+
+        self.report({'INFO'}, "Base distant meshes selection set")
+        return {'FINISHED'}
+
+
+###########################################################
+###########################################################
+###########################################################
+
+
+# noinspection PyPep8Naming
+class PivotPainter_OT_GenerateDistantHierarchy(bpy.types.Operator):
+    bl_label = "Generate Distant Hierarchy"
+    bl_idname = "pivot_painter.generate_distant_hierarchy"
+    bl_description = "Will assign parents, from Distant Parents Meshes List, based on closest distance to any of parent meshes."
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
+
+    def execute(self, context):
+        if len(context.selected_objects) < 1:
+            self.report({'ERROR'}, "Atleast one object needs to be selected")
+            return {'CANCELLED'}
+
+        selection: list[bpy.types.Object] = []
+        for obj in context.selected_objects:
+            if obj is None or obj.type != 'MESH':
+                continue
+            selection.append(obj)
+
+        import time
+        start_time = time.time()
+        from .core.MeshOperations import generate_distant_hierarchy
+        if not generate_distant_hierarchy(self, context, selection):
+            # Reselect initially selected objects
+            bpy.ops.object.select_all(action='DESELECT')
+
+            for obj in selection:
+                obj.select_set(True)
+
+            return {'CANCELLED'}
+
+        # Reselect initially selected objects
+        bpy.ops.object.select_all(action='DESELECT')
+
+        for obj in selection:
+            obj.select_set(True)
+
+        self.report({'INFO'}, "Hierarchy generated, took {:.2f} seconds".format(time.time() - start_time))
+        return {'FINISHED'}
+
+
+###########################################################
+###########################################################
+###########################################################
+
+
+# noinspection PyPep8Naming
 class PivotPainter_OT_SelectEmptyAxisMeshes(bpy.types.Operator):
     bl_label = "Fill No Wind Meshes"
     bl_idname = "pivot_painter.fill_empty_axis_meshes"

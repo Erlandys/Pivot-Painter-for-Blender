@@ -239,6 +239,19 @@ class PIVOTPAINTER_PT_MeshOperations(bpy.types.Panel):
             row.scale_y = 2
             row.operator("pivot_painter.generate_hierarchy")
 
+        if expand_menu(self.layout, properties, 'show_generate_distant_hierarchy', 'Generate Distant Hierarchy'):
+            box = self.layout.box()
+
+            box.template_list("PIVOTPAINTER_UL_BaseMeshesList", "", properties, 'base_distant_meshes', properties, 'base_distant_mesh_index')
+
+            box.operator("pivot_painter.fill_base_distant_meshes_list")
+
+            box.separator()
+
+            row = box.row()
+            row.scale_y = 2
+            row.operator("pivot_painter.generate_distant_hierarchy")
+
         if expand_menu(self.layout, properties, 'show_empty_axis_meshes', 'No Wind Objects'):
             box = self.layout.box()
 

@@ -59,9 +59,11 @@ def create_uv_map(context: bpy.types.Context, selection: list[bpy.types.Object],
 
     progress = ProgressBar('Creating UV Maps', len(selection))
 
+    step = ceil(len(selection) * 0.01)
     for idx, obj in enumerate(selection):
         if obj is None or obj.data is None or obj.type != 'MESH':
-            progress += 1
+            if idx % step == step - 1:
+                progress += step
             continue
 
         obj.select_set(True)
@@ -100,7 +102,8 @@ def create_uv_map(context: bpy.types.Context, selection: list[bpy.types.Object],
 
         num += 1
         obj.select_set(False)
-        progress += 1
+        if idx % step == step - 1:
+            progress += step
 
     bpy.ops.object.select_all(action='DESELECT')
     for idx, obj in enumerate(selection):
@@ -160,8 +163,14 @@ def create_texture(operator: bpy.types.Operator, context: bpy.types.Context, sel
 def set_pixels(selection: list[bpy.types.Object], rgb_packer: TexturePacking, alpha_packer: TexturePacking, rgba: bool, progress_bar: ProgressBar, size: list[int]) -> list[float]:
     pixels: list[float] = numpy.ones(size[0] * size[1] * 4, dtype=float).tolist()
 
-    local_progress_bar = progress_bar.new_sub_progress('Calculating {1} of {0} pixels', len(selection) + size[0] * size[1] / 4)
+    if rgba:
+        has_post_process = rgb_packer.has_post_process()
+    else:
+        has_post_process = rgb_packer.has_post_process() or alpha_packer.has_post_process()
 
+    local_progress_bar = progress_bar.new_sub_progress('Preparing pixel data {1} of {0} pixels', len(selection) + ((size[0] * size[1] / 4) if has_post_process else 0))
+
+    step = ceil(len(selection) * 0.01)
     for idx in range(len(selection)):
         obj = selection[idx]
 
@@ -178,17 +187,25 @@ def set_pixels(selection: list[bpy.types.Object], rgb_packer: TexturePacking, al
         pixels[pixel_index * 4 + 1] = rgb_values[1]
         pixels[pixel_index * 4 + 2] = rgb_values[2]
         pixels[pixel_index * 4 + 3] = alpha_value
-        local_progress_bar += 1
+        if idx % step == step - 1:
+            local_progress_bar += step
 
-    for idx in range(0, size[0] * size[1], 4):
-        if rgba:
-            pixels[idx:idx + 3] = rgb_packer.post_process(pixels[idx:idx + 3])
-        else:
-            if rgb_packer.has_post_process():
-                pixels[idx:idx + 2] = rgb_packer.post_process(pixels[idx:idx + 2])
-            if alpha_packer.has_post_process():
-                pixels[idx + 3] = alpha_packer.post_process(pixels[idx + 3])
-        local_progress_bar += 1
+    step = ceil((size[0] * size[1] / 4) * 0.01)
+    step_idx = 0
+
+    if has_post_process:
+        for idx in range(0, size[0] * size[1], 4):
+            if rgba:
+                if rgb_packer.has_post_process():
+                    pixels[idx:idx + 3] = rgb_packer.post_process(pixels[idx:idx + 3])
+            else:
+                if rgb_packer.has_post_process():
+                    pixels[idx:idx + 2] = rgb_packer.post_process(pixels[idx:idx + 2])
+                if alpha_packer.has_post_process():
+                    pixels[idx + 3] = alpha_packer.post_process(pixels[idx + 3])
+            step_idx += 1
+            if step_idx % step == step - 1:
+                local_progress_bar += step
 
     local_progress_bar.finish()
 
